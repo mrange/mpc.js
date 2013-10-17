@@ -9,6 +9,8 @@
 // ----------------------------------------------------------------------------------------------
 // You must not remove this notice, or any other, from this software.
 // ----------------------------------------------------------------------------------------------
+// mpc.js is a monadic parser combinator library
+// See this classic article for an introduction: http://www.cs.nott.ac.uk/~gmh/monparsing.pdf
 var mpc;
 (function (mpc) {
     var StringBuilder = (function () {

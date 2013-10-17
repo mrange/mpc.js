@@ -12,6 +12,10 @@
 
 // A simple expression parser that can expressions like: x + 3 * (y + 3*z)
 
+// mpc.js is a monadic parser combinator library
+// See this classic article for an introduction: http://www.cs.nott.ac.uk/~gmh/monparsing.pdf
+
+
 module exp {
 
     // All support operators
