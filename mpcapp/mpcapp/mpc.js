@@ -215,56 +215,62 @@ var mpc;
             });
         };
 
-        /* This for some reason struggles as a member function
-        combine<TOther>(pOther : Parser<TOther>) : Parser<{v0 : T; v1 : TOther}> {
-        return parser<{v0 : T; v1 : TOther}> ((ps : ParserState) => {
-        var snapshot = ps.snapshot()
-        
-        var pResult = this.parse(ps)
-        
-        if (!pResult.success) {
-        return ps.fail<{v0 : T; v1 : TOther}>()
-        }
-        
-        var pOtherResult = pOther.parse(ps)
-        
-        if (!pOtherResult.success) {
-        ps.restore(snapshot)
-        return ps.fail<{v0 : T; v1 : TOther}>()
-        }
-        
-        var result = {v0 : pResult.value, v1 : pOtherResult.value}
-        
-        return ps.succeed(result)
-        })
-        }
-        */
-        /* This for some reason struggles as a member function
-        chainLeft<S>(pSeparator : Parser<S>, combiner : (l : T, op : S, r : T) => T) : Parser<T> {
-        return parser ((ps : ParserState) => {
-        var snapshot = ps.snapshot()
-        
-        var pResult = this.parse(ps)
-        if(!pResult.success) {
-        return ps.fail<T>()
-        }
-        
-        var value = pResult.value
-        
-        var pSeparatorResult    : ParseResult<S>
-        var pOtherResult        : ParseResult<T>
-        
-        while((pSeparatorResult = pSeparator.parse(ps)).success && (pOtherResult = this.parse(ps)).success) {
-        snapshot = ps.snapshot()
-        value = combiner(value, pSeparatorResult.value, pOtherResult.value)
-        }
-        
-        ps.restore(snapshot)
-        
-        return ps.succeed(value)
-        })
-        }
-        */
+        Parser.prototype.combine = function (pOther) {
+            var _this = this;
+            return parser(function (ps) {
+                var snapshot = ps.snapshot();
+
+                var pResult = _this.parse(ps);
+
+                if (!pResult.success) {
+                    return ps.fail();
+                }
+
+                // Bug? The compiler suprisingly reports that:
+                // error TS2012: Cannot convert 'mpc.ParseResult<T>' to 'mpc.ParseResult<TOther>'
+                // But pOther is of type Parser<TOther> and Parser is defined as:
+                //     export class Parser<T> {
+                //      parse : (ps : ParserState) => ParseResult<T>
+                // Non member combine works fine
+                var pOtherResult = pOther.parse(ps);
+
+                if (!pOtherResult.success) {
+                    ps.restore(snapshot);
+                    return ps.fail();
+                }
+
+                var result = { v0: pResult.value, v1: pOtherResult.value };
+
+                return ps.succeed(result);
+            });
+        };
+
+        Parser.prototype.chainLeft = function (pSeparator, combiner) {
+            var _this = this;
+            return parser(function (ps) {
+                var snapshot = ps.snapshot();
+
+                var pResult = _this.parse(ps);
+                if (!pResult.success) {
+                    return ps.fail();
+                }
+
+                var value = pResult.value;
+
+                var pSeparatorResult;
+                var pOtherResult;
+
+                while ((pSeparatorResult = pSeparator.parse(ps)).success && (pOtherResult = _this.parse(ps)).success) {
+                    snapshot = ps.snapshot();
+                    value = combiner(value, pSeparatorResult.value, pOtherResult.value);
+                }
+
+                ps.restore(snapshot);
+
+                return ps.succeed(value);
+            });
+        };
+
         Parser.prototype.keepLeft = function (pOther) {
             var _this = this;
             return parser(function (ps) {

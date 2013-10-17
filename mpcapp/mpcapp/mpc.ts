@@ -223,7 +223,6 @@ module mpc {
             })
         }
 
-        /* This for some reason struggles as a member function
         combine<TOther>(pOther : Parser<TOther>) : Parser<{v0 : T; v1 : TOther}> {
             return parser<{v0 : T; v1 : TOther}> ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -234,7 +233,13 @@ module mpc {
                     return ps.fail<{v0 : T; v1 : TOther}>()
                 }
 
-                var pOtherResult = pOther.parse(ps)
+                // Bug? The compiler suprisingly reports that:
+                // error TS2012: Cannot convert 'mpc.ParseResult<T>' to 'mpc.ParseResult<TOther>'
+                // But pOther is of type Parser<TOther> and Parser is defined as:
+                //     export class Parser<T> {
+                //      parse : (ps : ParserState) => ParseResult<T>
+                // Non member combine works fine
+                var pOtherResult : ParseResult<TOther> = pOther.parse(ps)
 
                 if (!pOtherResult.success) {
                     ps.restore(snapshot)
@@ -246,9 +251,7 @@ module mpc {
                 return ps.succeed(result)
             })
         }
-        */
 
-        /* This for some reason struggles as a member function
         chainLeft<S>(pSeparator : Parser<S>, combiner : (l : T, op : S, r : T) => T) : Parser<T> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -263,6 +266,12 @@ module mpc {
                 var pSeparatorResult    : ParseResult<S>
                 var pOtherResult        : ParseResult<T>
 
+                // Bug? The compiler suprisingly reports that:
+                // error TS2012: Cannot convert 'mpc.ParseResult<T>' to 'mpc.ParseResult<S>'
+                // But pSeparator is of type Parser<S> and Parser is defined as:
+                //     export class Parser<T> {
+                //      parse : (ps : ParserState) => ParseResult<T>
+                // Non member chainLeft works fine
                 while((pSeparatorResult = pSeparator.parse(ps)).success && (pOtherResult = this.parse(ps)).success) {
                     snapshot = ps.snapshot()
                     value = combiner(value, pSeparatorResult.value, pOtherResult.value)
@@ -273,7 +282,6 @@ module mpc {
                 return ps.succeed(value)
             })
         }
-        */
 
         keepLeft<TOther>(pOther : Parser<TOther>) : Parser<T> {
             return parser ((ps : ParserState) => { 
