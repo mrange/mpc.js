@@ -1,17 +1,4 @@
-﻿// ----------------------------------------------------------------------------------------------
-// Copyright (c) Mårten Rånge.
-// ----------------------------------------------------------------------------------------------
-// This source code is subject to terms and conditions of the Microsoft Public License. A
-// copy of the license can be found in the License.html file at the root of this distribution.
-// If you cannot locate the  Microsoft Public License, please send an email to
-// dlr@microsoft.com. By using this source code in any fashion, you are agreeing to be bound
-//  by the terms of the Microsoft Public License.
-// ----------------------------------------------------------------------------------------------
-// You must not remove this notice, or any other, from this software.
-// ----------------------------------------------------------------------------------------------
-// mpc.js is a monadic parser combinator library
-// See this classic article for an introduction: http://www.cs.nott.ac.uk/~gmh/monparsing.pdf
-var mpc;
+﻿var mpc;
 (function (mpc) {
     var StringBuilder = (function () {
         function StringBuilder() {
@@ -215,56 +202,6 @@ var mpc;
             });
         };
 
-        /* This for some reason struggles as a member function
-        combine<TOther>(pOther : Parser<TOther>) : Parser<{v0 : T; v1 : TOther}> {
-        return parser<{v0 : T; v1 : TOther}> ((ps : ParserState) => {
-        var snapshot = ps.snapshot()
-        
-        var pResult = this.parse(ps)
-        
-        if (!pResult.success) {
-        return ps.fail<{v0 : T; v1 : TOther}>()
-        }
-        
-        var pOtherResult = pOther.parse(ps)
-        
-        if (!pOtherResult.success) {
-        ps.restore(snapshot)
-        return ps.fail<{v0 : T; v1 : TOther}>()
-        }
-        
-        var result = {v0 : pResult.value, v1 : pOtherResult.value}
-        
-        return ps.succeed(result)
-        })
-        }
-        */
-        /* This for some reason struggles as a member function
-        chainLeft<S>(pSeparator : Parser<S>, combiner : (l : T, op : S, r : T) => T) : Parser<T> {
-        return parser ((ps : ParserState) => {
-        var snapshot = ps.snapshot()
-        
-        var pResult = this.parse(ps)
-        if(!pResult.success) {
-        return ps.fail<T>()
-        }
-        
-        var value = pResult.value
-        
-        var pSeparatorResult    : ParseResult<S>
-        var pOtherResult        : ParseResult<T>
-        
-        while((pSeparatorResult = pSeparator.parse(ps)).success && (pOtherResult = this.parse(ps)).success) {
-        snapshot = ps.snapshot()
-        value = combiner(value, pSeparatorResult.value, pOtherResult.value)
-        }
-        
-        ps.restore(snapshot)
-        
-        return ps.succeed(value)
-        })
-        }
-        */
         Parser.prototype.keepLeft = function (pOther) {
             var _this = this;
             return parser(function (ps) {
@@ -357,7 +294,6 @@ var mpc;
             });
         };
 
-        // log parser is useful for debugging
         Parser.prototype.log = function (name) {
             var _this = this;
             return parser(function (ps) {
@@ -420,6 +356,34 @@ var mpc;
         });
     }
     mpc.dedent = dedent;
+
+    function indention() {
+        return parser(function (ps) {
+            var snapshot = ps.snapshot();
+
+            if (ps.indent === 0) {
+                return ps.succeed(0);
+            }
+
+            var satisy = function (ch, pos) {
+                return pos < ps.indent && ch === 0x09;
+            };
+            var tabs = ps.skipAdvance(satisy);
+
+            if (tabs !== ps.indent) {
+                ps.restore(snapshot);
+                return ps.fail();
+            }
+
+            return ps.succeed(tabs);
+        });
+    }
+    mpc.indention = indention;
+
+    function anyIndention() {
+        return skipSatisfyMany(satisyTab);
+    }
+    mpc.anyIndention = anyIndention;
 
     function anyChar() {
         return parser(function (ps) {
@@ -697,37 +661,8 @@ var mpc;
     }
     mpc.choice = choice;
 
-    function anyIndention() {
-        return skipSatisfyMany(satisyWhitespace);
-    }
-    mpc.anyIndention = anyIndention;
-
-    function indention() {
-        return parser(function (ps) {
-            var snapshot = ps.snapshot();
-
-            if (ps.indent === 0) {
-                return ps.succeed(0);
-            }
-
-            var satisy = function (ch, pos) {
-                return pos < ps.indent && ch === 0x09;
-            };
-            var tabs = ps.skipAdvance(satisy);
-
-            if (tabs !== ps.indent) {
-                ps.restore(snapshot);
-                return ps.fail();
-            }
-
-            return ps.succeed(tabs);
-        });
-    }
-    mpc.indention = indention;
-
     function circular() {
         return parser(null);
     }
     mpc.circular = circular;
 })(mpc || (mpc = {}));
-//# sourceMappingURL=mpc.js.map

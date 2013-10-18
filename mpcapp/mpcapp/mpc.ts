@@ -15,6 +15,7 @@
 
 module mpc {
 
+    // StringBuilder helps building strings more efficiently
     export class StringBuilder {
         data    : string[]  = []
 
@@ -41,19 +42,27 @@ module mpc {
         }
     }
 
+    // Holds a parser snapshot
     export class Snapshot {
         position    : number
         indent      : number
     }
 
+    // Tests a character and position
     export interface Satisfy {
         (ch : number, pos : number) : boolean
     }
 
+    // Combines left tree with right tree using op
     export interface Combiner<T,S> {
         (left : T, op : S, right : T) : T
     }
 
+    // ParserState holds (surprisingly) the parser state ie
+    //  The text to be parsed
+    //  The position in the text
+    //  The current indention level
+    // Note: For efficiency reasons ParserState is mutable
     export class ParserState {
         text    : string
         position: number
@@ -65,14 +74,17 @@ module mpc {
             this.indent     = 0
         }
 
+        // Takes a snapshot of the parser state
         snapshot() : Snapshot {
             return { position : this.position, indent : this.indent }
         }
 
+        // Increases the current indent
         increaseIndent() : void {
             ++this.indent
         }
 
+        // Decreases the current indent
         decreaseIndent() : boolean {
             if (this.indent < 1) {
                 return false
@@ -83,15 +95,21 @@ module mpc {
             return true
         }
 
+        // Restores the parser state from a snaphot
         restore(snapshot : Snapshot) {
             this.position   = snapshot.position
             this.indent     = snapshot.indent
         }
 
+        // Tests if state is at end of stream (EOS)
         isEOS() : boolean {
             return this.position >= this.text.length
         }
 
+        // Advances the parser state as long as the current character and local position
+        //  satisfies a criteria
+        // Local position starts at 0 and then increases for each call to satisfy
+        // Returns the string that satisfy the critera
         advance (satisfy : Satisfy) : string {
             var begin = this.position
             var end = this.text.length
@@ -107,6 +125,10 @@ module mpc {
             return this.text.substring(begin, pos);
         }
 
+        // Advances the parser state as long as the current character and local position
+        //  satisfies a criteria
+        // Local position starts at 0 and then increases for each call to satisfy
+        // Returns how many characters match the criteria (more efficient then advance)
         skipAdvance (satisfy : Satisfy) : number {
             var begin = this.position
             var end = this.text.length
@@ -122,29 +144,49 @@ module mpc {
             return pos - begin
         }
 
+        // Creates a success ParseResult from current state and value
         succeed<T>(value : T) : ParseResult<T> {
             return {state : this, success : true , value : value}
         }
 
+        // Creates a failure ParseResult from current state
         fail<T>() : ParseResult<T> {
             return {state : this, success : false , value : undefined}
         }
 
     }
 
+    // Represents a parse result:
+    //  The current ParserState
+    //  A flag indicating if parse was successful
+    //  The parsed value (only value if success flag is true)
     export class ParseResult<T> {
         state   : ParserState
         success : boolean
         value   : T
     }
 
+    // The Parser monad
+    //  A parser takes a parser state and produces a ParseResult
+    //
+    //  If the parse was successful the ParseResult shall contain the value 
+    //  and the parser state advanced to the next unparsed character
+    //
+    //  If the parse was unsuccesful the ParseResult shall contain no vlaue
+    //  and the parser state should not be changed updated
+    //  Note: This implies that a parser that mutates the parser state
+    //  needs to restore the parser state on failure. Use snapshot/restore
+    //  Note: If the parser uses other parsers and they all fail no restore
+    //  is needed as Parsers are required to restore their state on failure
     export class Parser<T> {
+        // The parse function
         parse       :   (ps : ParserState) => ParseResult<T>
 
         constructor (p : (ps : ParserState) => ParseResult<T>) {
             this.parse = p
         }
 
+        // Takes a Parser<T> and converts it into a Parser<void>
         noResult() : Parser<void> {
             return parser ((ps : ParserState) => { 
                 var pResult = this.parse(ps)
@@ -157,6 +199,7 @@ module mpc {
             })
         }
 
+        // Takes a Parser<T> and tests if T satisfies a predicate
         test(predicate : (v : T) => boolean) : Parser<T> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -176,7 +219,8 @@ module mpc {
                 return ps.succeed(pResult.value)
             })
         }
-
+        
+        // Tests if a parser has consumed at least i character
         consumedAtLeast(i : number) : Parser<T> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -197,6 +241,9 @@ module mpc {
             })
         }
 
+        // Combines a parser with a begin parser and an end parser
+        // Typically used to implement subexpressions that is surrounded by parantheses
+        // Example: expressionParser.inBetween(skipString("("), skipString(")"))
         inBetween(pBegin : Parser<void>, pEnd : Parser<void>) : Parser<T> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -275,6 +322,10 @@ module mpc {
         }
         */
 
+        // Combines a parser with another parser but keeps the result 
+        // of the first parser
+        // This is often used when parsing tokens but the value of the token isn't interesting
+        // Example: combine(identifier.keepLeft(skipString("=")), value)    // The result is a tuple of identifier parser and value parser
         keepLeft<TOther>(pOther : Parser<TOther>) : Parser<T> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -296,6 +347,10 @@ module mpc {
             })
         }
 
+        // Combines a parser with another parser but keeps the result 
+        // of the second parser
+        // This is often used when parsing tokens but the value of the token isn't interesting
+        // Example: combine(identifier, skipString("=").keepRight(value))    // The result is a tuple of identifier parser and value parser
         keepRight<TOther>(pOther : Parser<TOther>) : Parser<TOther> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -317,6 +372,8 @@ module mpc {
             })
         }
 
+        // Parse only succeed the parser succeeds and the except parser fails
+        // Example: manyString(anyChar().except(EOL()))
         except<TOther>(pExcept : Parser<TOther>) : Parser<T> {
             return parser ((ps : ParserState) => { 
                 var snapshot = ps.snapshot()
@@ -339,6 +396,7 @@ module mpc {
             })
         }
 
+        // Parse always succeed but value is null if the parser failed
         opt() : Parser<T> {
             return parser ((ps : ParserState) => { 
 
@@ -352,6 +410,8 @@ module mpc {
             })
         }
 
+        // Transforms the parsed value using a transform function
+        // Example: anyStringOf("0123456789").consumedAtLeast(1).transform((c : string) => parseFloat(c))
         transform<TTo>(transform : (T) => TTo) : Parser<TTo> {
             return parser ((ps : ParserState) => { 
 
@@ -383,24 +443,28 @@ module mpc {
         }
     }
 
+    // Constructs a parser from a parse function
     export function parser<T> (p : (ps : ParserState) => ParseResult<T>) {
         return new Parser<T> (p)
     }
 
+    // Executes a parser over an input string
     export function parse<T>(p : Parser<T>, s : string) : ParseResult<T> {
         var ps = new ParserState(s)
         return p.parse(ps)
     }
 
+    // Returns a parser that always succeed with value
     export function success<T>(value : T) : Parser<T> {
         return parser ((ps : ParserState) => { return ps.succeed(value) })
     }
 
+    // Returns a parser that always fails
     export function fail<T>() : Parser<T> {
         return parser ((ps : ParserState) => { return ps.fail<T>() })
     }
 
-   
+    // Parser increases the current indent
     export function indent() : Parser<void> {
         return parser ((ps : ParserState) => { 
             ps.increaseIndent()
@@ -408,6 +472,8 @@ module mpc {
         })
     }
 
+    // Parser decreases the current indent
+    // Fails if indent couldn't be decreased
     export function dedent() : Parser<void> {
         return parser ((ps : ParserState) => { 
             if (!ps.decreaseIndent()) {
@@ -417,6 +483,36 @@ module mpc {
         })
     }
 
+    // Parser parses the expected number of indent
+    // Fails if not enough indent characters could be consumed
+    export function indention() : Parser<number> {
+        return parser ((ps : ParserState) => { 
+            var snapshot = ps.snapshot()
+
+            if (ps.indent === 0)
+            {
+                return ps.succeed(0)
+            }
+
+            var satisy : Satisfy = (ch, pos) => pos < ps.indent && ch === 0x09 /*tab*/
+            var tabs = ps.skipAdvance(satisy)
+
+            if (tabs !== ps.indent) {
+                ps.restore(snapshot)
+                return ps.fail<number>()
+            }
+
+            return ps.succeed(tabs)
+        })
+    }
+
+    // Parses any number of indention characters
+    export function anyIndention() : Parser<number> {
+        return skipSatisfyMany(satisyTab)
+    }
+
+    // Parses any character
+    // The parsed value is a unicode number character
     export function anyChar() : Parser<number> {
         return parser ((ps : ParserState) => { 
             if (ps.isEOS()) {
@@ -431,6 +527,8 @@ module mpc {
         })
     }
 
+    // Parses any character that is a member of str
+    // mapper is then called with the index of the parsed character to a produce the value
     export function anyCharOf<T>(str : string, mapper : (number) => T) : Parser<T> {
         var numbers = []
 
@@ -457,6 +555,7 @@ module mpc {
         })
     }
 
+    // Parses a string whose characters are a member of str
     export function anyStringOf<T>(str : string) : Parser<string> {
         var numbers = []
 
@@ -474,6 +573,7 @@ module mpc {
         })
     }
 
+    // Parses EOS (end of stream)
     export function EOS() : Parser<void> {
         return parser ((ps : ParserState) => { 
             if (!ps.isEOS()) {
@@ -484,6 +584,7 @@ module mpc {
         })
     }
 
+    // Parses EOL (end of line)
     export function EOL() : Parser<void> {
         return parser ((ps : ParserState) => { 
             if (ps.isEOS()) {
@@ -512,6 +613,7 @@ module mpc {
         })
     }
 
+    // Parses a character that satisfy the predicate
     export function satisfy(satisfy : Satisfy) : Parser<number> {
         return parser ((ps : ParserState) => { 
             if (ps.isEOS()) {
@@ -530,14 +632,17 @@ module mpc {
         })
     }
 
+    // Parses a string that satisfy the predicate
     export function satisfyMany(satisfy : Satisfy) : Parser<string> {
         return parser ((ps : ParserState) => { return ps.succeed(ps.advance(satisfy)) })
     }
 
+    // Skips characters that match the predicate
     export function skipSatisfyMany(satisfy : Satisfy) : Parser<number> {
         return parser ((ps : ParserState) => { return ps.succeed(ps.skipAdvance(satisfy)) })
     }
 
+    // Satisfy function for whitespace
     export function satisyWhitespace(ch : number, pos : number) {
         switch(ch)
         {
@@ -551,10 +656,13 @@ module mpc {
         }
     }
 
+    // Satisfy function for tab
     export function satisyTab(ch : number, pos : number) {
         return ch === 0x09 // Tab
     }
 
+    // Skips a string that matches str
+    //  Typically used to parse tokens in file
     export function skipString(str : string) : Parser<void> {
         return parser ((ps : ParserState) => { 
             var snapshot = ps.snapshot()
@@ -574,6 +682,7 @@ module mpc {
         })
     }
 
+    // Applies the parser until it fails and the value is an array of all successfully parsed values
     export function many<T>(p : Parser<T>) : Parser<T[]> {
         return parser ((ps : ParserState) => { 
 
@@ -589,6 +698,7 @@ module mpc {
         })
     }
 
+    // Applies the character number parser and combines the characters into a string
     export function manyString(p : Parser<number>) : Parser<string> {
         return parser ((ps : ParserState) => { 
 
@@ -606,6 +716,7 @@ module mpc {
         })
     }
 
+    // Combines two parser results into a tuple value of both results
     export function combine<T0, T1>(p0 : Parser<T0>, p1 : Parser<T1>) : Parser<{v0 : T0; v1 : T1}> {
         return parser ((ps : ParserState) => { 
             var snapshot = ps.snapshot()
@@ -629,6 +740,10 @@ module mpc {
         })
     }
 
+    // chainLeft is typically used to implement left associative operators
+    //  The p parser parser an expression
+    //  The pSeparator parser parses the operator
+    //  The combiner combines the result expressions into a new expression
     export function chainLeft<T,S>(p : Parser<T>, pSeparator : Parser<S>, combiner : Combiner<T,S>) : Parser<T> {
         return parser ((ps : ParserState) => { 
 
@@ -655,6 +770,7 @@ module mpc {
         })
     }
 
+    // choice applies each input parser in order and picks the first that matches
     export function choice<T>(... choices : Parser<T>[]) : Parser<T> {
         return parser ((ps : ParserState) => { 
 
@@ -673,31 +789,7 @@ module mpc {
         })
     }
 
-    export function anyIndention() : Parser<number> {
-        return skipSatisfyMany(satisyWhitespace)
-    }
-
-    export function indention() : Parser<number> {
-        return parser ((ps : ParserState) => { 
-            var snapshot = ps.snapshot()
-
-            if (ps.indent === 0)
-            {
-                return ps.succeed(0)
-            }
-
-            var satisy : Satisfy = (ch, pos) => pos < ps.indent && ch === 0x09 /*tab*/
-            var tabs = ps.skipAdvance(satisy)
-
-            if (tabs !== ps.indent) {
-                ps.restore(snapshot)
-                return ps.fail<number>()
-            }
-
-            return ps.succeed(tabs)
-        })
-    }
-
+    // Special parser used to be break circular parsers (very common)
     export function circular<T>() : Parser<T> {
         return parser<T> (null)
     }
