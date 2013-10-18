@@ -474,12 +474,11 @@ var mpc;
             var ch = 0;
             var data = [];
 
-            while (!ps.isEOS() && numbers.indexOf((ch = ps.text.charCodeAt(ps.position))) > -1) {
-                data[data.length] = String.fromCharCode(ch);
-                ++ps.position;
-            }
+            var result = ps.advance(function (ch, pos) {
+                return numbers.indexOf(ch) > -1;
+            });
 
-            return ps.succeed(data.join(""));
+            return ps.succeed(result);
         });
     }
     mpc.anyStringOf = anyStringOf;

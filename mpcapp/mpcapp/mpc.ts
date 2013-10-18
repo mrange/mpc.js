@@ -468,13 +468,9 @@ module mpc {
             var ch = 0
             var data : string[] = []
 
-            while (!ps.isEOS() && numbers.indexOf((ch = ps.text.charCodeAt(ps.position))) > -1)
-            {
-                data[data.length] = String.fromCharCode(ch)
-                ++ps.position
-            }
+            var result = ps.advance((ch, pos) => numbers.indexOf(ch) > -1)
 
-            return ps.succeed(data.join(""))
+            return ps.succeed(result)
         })
     }
 
