@@ -135,6 +135,19 @@
             });
         };
 
+        Parser.prototype.result = function (v) {
+            var _this = this;
+            return parser(function (ps) {
+                var pResult = _this.parse(ps);
+
+                if (!pResult.success) {
+                    return ps.fail();
+                }
+
+                return ps.succeed(v);
+            });
+        };
+
         Parser.prototype.test = function (predicate) {
             var _this = this;
             return parser(function (ps) {
@@ -400,7 +413,7 @@
     }
     mpc.anyChar = anyChar;
 
-    function anyCharOf(str, mapper) {
+    function anyCharOf(str) {
         var numbers = [];
 
         for (var iter = 0; iter < str.length; ++iter) {
@@ -422,10 +435,40 @@
 
             ++ps.position;
 
-            return ps.succeed(mapper(indexOf));
+            return ps.succeed(indexOf);
         });
     }
     mpc.anyCharOf = anyCharOf;
+    function anyCharOf2(str, mapTo) {
+        var numbers = [];
+
+        for (var iter = 0; iter < str.length; ++iter) {
+            numbers[iter] = str.charCodeAt(iter);
+        }
+
+        return parser(function (ps) {
+            if (ps.isEOS()) {
+                return ps.fail();
+            }
+
+            var ch = ps.text.charCodeAt(ps.position);
+
+            var indexOf = numbers.indexOf(ch);
+
+            if (indexOf < 0) {
+                return ps.fail();
+            }
+
+            if (indexOf >= mapTo.length) {
+                return ps.fail();
+            }
+
+            ++ps.position;
+
+            return ps.succeed(mapTo[indexOf]);
+        });
+    }
+    mpc.anyCharOf2 = anyCharOf2;
 
     function anyStringOf(str) {
         var numbers = [];

@@ -199,6 +199,19 @@ module mpc {
             })
         }
 
+        // Takes a Parser<T> and converts it into a Parser<TResult>
+        result<TResult>(v : TResult) : Parser<TResult> {
+            return parser ((ps : ParserState) => { 
+                var pResult = this.parse(ps)
+                
+                if (!pResult.success) {
+                    return ps.fail<TResult>()
+                }
+
+                return ps.succeed(v)
+            })
+        }
+
         // Takes a Parser<T> and tests if T satisfies a predicate
         test(predicate : (v : T) => boolean) : Parser<T> {
             return parser ((ps : ParserState) => { 
@@ -527,9 +540,8 @@ module mpc {
         })
     }
 
-    // Parses any character that is a member of str
-    // mapper is then called with the index of the parsed character to a produce the value
-    export function anyCharOf<T>(str : string, mapper : (number) => T) : Parser<T> {
+    // Parses any character that is a member of str and returns the index of the match
+    export function anyCharOf(str : string) : Parser<number> {
         var numbers = []
 
         for (var iter = 0; iter < str.length; ++iter) {
@@ -551,7 +563,36 @@ module mpc {
 
             ++ps.position
 
-            return ps.succeed(mapper(indexOf))
+            return ps.succeed(indexOf)
+        })
+    }
+    export function anyCharOf2<T>(str : string, mapTo : T[]) : Parser<T> {
+        var numbers = []
+
+        for (var iter = 0; iter < str.length; ++iter) {
+            numbers[iter] = str.charCodeAt(iter)
+        }
+
+        return parser ((ps : ParserState) => { 
+            if (ps.isEOS()) {
+                return ps.fail<T>()
+            }
+
+            var ch = ps.text.charCodeAt(ps.position)
+
+            var indexOf = numbers.indexOf(ch)
+
+            if (indexOf < 0) {
+                return ps.fail<T>()
+            }
+
+            if (indexOf >= mapTo.length) {
+                return ps.fail<T>()
+            }
+
+            ++ps.position
+
+            return ps.succeed(mapTo[indexOf])
         })
     }
 

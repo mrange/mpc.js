@@ -6,6 +6,8 @@
         BinaryOperator[BinaryOperator["Subtract"] = 2] = "Subtract";
         BinaryOperator[BinaryOperator["Multiply"] = 3] = "Multiply";
         BinaryOperator[BinaryOperator["Divide"] = 4] = "Divide";
+        BinaryOperator[BinaryOperator["EqualTo"] = 5] = "EqualTo";
+        BinaryOperator[BinaryOperator["NotEqualTo"] = 6] = "NotEqualTo";
     })(exp.BinaryOperator || (exp.BinaryOperator = {}));
     var BinaryOperator = exp.BinaryOperator;
 
@@ -67,6 +69,12 @@
                 case BinaryOperator.Divide:
                     this.expr.append(" / ");
                     break;
+                case BinaryOperator.EqualTo:
+                    this.expr.append(" = ");
+                    break;
+                case BinaryOperator.NotEqualTo:
+                    this.expr.append(" <> ");
+                    break;
             }
             right.apply(this);
             this.expr.append(")");
@@ -85,31 +93,11 @@
 
     var p_whitespaces = mpc.skipSatisfyMany(mpc.satisyWhitespace);
 
-    var p_addLikeOperator = mpc.anyCharOf("+-", function (i) {
-        switch (i) {
-            case 0:
-                return BinaryOperator.Add;
-            case 1:
-                return BinaryOperator.Subtract;
-            default:
-                return BinaryOperator.Unknown;
-        }
-    }).keepLeft(p_whitespaces);
+    var p_addLikeOperator = mpc.anyCharOf2("+-", [BinaryOperator.Add, BinaryOperator.Subtract]).keepLeft(p_whitespaces);
 
-    var p_multiplyLikeOperator = mpc.anyCharOf("*/", function (i) {
-        switch (i) {
-            case 0:
-                return BinaryOperator.Multiply;
-            case 1:
-                return BinaryOperator.Divide;
-            default:
-                return BinaryOperator.Unknown;
-        }
-    }).keepLeft(p_whitespaces);
+    var p_multiplyLikeOperator = mpc.anyCharOf2("*/", [BinaryOperator.Multiply, BinaryOperator.Divide]).keepLeft(p_whitespaces);
 
-    function expressionCombiner(l, op, r) {
-        return new BinaryExpression(op, l, r);
-    }
+    var p_comparisonOperator = mpc.choice(mpc.skipString("=").result(BinaryOperator.EqualTo), mpc.skipString("<>").result(BinaryOperator.NotEqualTo)).keepLeft(p_whitespaces);
 
     var p_number = mpc.anyStringOf("0123456789").consumedAtLeast(1).keepLeft(p_whitespaces).transform(function (c) {
         return new NumberLiteralExpression(parseFloat(c));
@@ -125,15 +113,21 @@
 
     var p_subExpression = p_expression.inBetween(mpc.skipString("("), mpc.skipString(")")).keepLeft(p_whitespaces);
 
-    var p_l0 = mpc.choice(p_number, p_identifer, p_subExpression);
+    function expressionCombiner(l, op, r) {
+        return new BinaryExpression(op, l, r);
+    }
 
-    var p_l1 = mpc.chainLeft(p_l0, p_multiplyLikeOperator, expressionCombiner);
+    var p_term = mpc.choice(p_number, p_identifer, p_subExpression);
+
+    var p_l1 = mpc.chainLeft(p_term, p_multiplyLikeOperator, expressionCombiner);
 
     var p_l2 = mpc.chainLeft(p_l1, p_addLikeOperator, expressionCombiner);
 
+    var p_l3 = mpc.chainLeft(p_l2, p_comparisonOperator, expressionCombiner);
+
     var p_complete = (function () {
-        p_expression.parse = p_l2.parse;
-        return p_l2;
+        p_expression.parse = p_l3.parse;
+        return p_l3;
     })();
 
     function parseExpression(s) {
