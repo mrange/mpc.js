@@ -70,6 +70,14 @@
             return this.position >= this.text.length;
         };
 
+        ParserState.prototype.currentCharCode = function () {
+            if (this.position >= this.text.length) {
+                return undefined;
+            }
+
+            return this.text.charCodeAt(this.position);
+        };
+
         ParserState.prototype.advance = function (satisfy) {
             var begin = this.position;
             var end = this.text.length;
@@ -400,11 +408,11 @@
 
     function anyChar() {
         return parser(function (ps) {
-            if (ps.isEOS()) {
+            var ch = ps.currentCharCode();
+
+            if (ch === undefined) {
                 return ps.fail();
             }
-
-            var ch = ps.text.charCodeAt(ps.position);
 
             ++ps.position;
 
@@ -421,11 +429,11 @@
         }
 
         return parser(function (ps) {
-            if (ps.isEOS()) {
+            var ch = ps.currentCharCode();
+
+            if (ch === undefined) {
                 return ps.fail();
             }
-
-            var ch = ps.text.charCodeAt(ps.position);
 
             var indexOf = numbers.indexOf(ch);
 
@@ -447,11 +455,11 @@
         }
 
         return parser(function (ps) {
-            if (ps.isEOS()) {
+            var ch = ps.currentCharCode();
+
+            if (ch === undefined) {
                 return ps.fail();
             }
-
-            var ch = ps.text.charCodeAt(ps.position);
 
             var indexOf = numbers.indexOf(ch);
 
@@ -633,7 +641,7 @@
     }
     mpc.manyString = manyString;
 
-    function combine(p0, p1) {
+    function combine2(p0, p1) {
         return parser(function (ps) {
             var snapshot = ps.snapshot();
 
@@ -655,7 +663,38 @@
             return ps.succeed(result);
         });
     }
-    mpc.combine = combine;
+    mpc.combine2 = combine2;
+
+    function combine3(p0, p1, p2) {
+        return parser(function (ps) {
+            var snapshot = ps.snapshot();
+
+            var p0Result = p0.parse(ps);
+
+            if (!p0Result.success) {
+                return ps.fail();
+            }
+
+            var p1Result = p1.parse(ps);
+
+            if (!p1Result.success) {
+                ps.restore(snapshot);
+                return ps.fail();
+            }
+
+            var p2Result = p2.parse(ps);
+
+            if (!p2Result.success) {
+                ps.restore(snapshot);
+                return ps.fail();
+            }
+
+            var result = { v0: p0Result.value, v1: p1Result.value, v2: p2Result.value };
+
+            return ps.succeed(result);
+        });
+    }
+    mpc.combine3 = combine3;
 
     function chainLeft(p, pSeparator, combiner) {
         return parser(function (ps) {
@@ -703,6 +742,41 @@
         });
     }
     mpc.choice = choice;
+
+    function switchOver(defaultTo) {
+        var choices = [];
+        for (var _i = 0; _i < (arguments.length - 1); _i++) {
+            choices[_i] = arguments[_i + 1];
+        }
+        var map = [];
+
+        for (var iter = 0; iter < choices.length; ++iter) {
+            var choice = choices[iter];
+
+            var d = choice.differentiator || "";
+
+            for (var ita = 0; ita < d.length; ++ita) {
+                map[d.charCodeAt(ita)] = choices[iter].parser;
+            }
+        }
+
+        return parser(function (ps) {
+            var ch = ps.currentCharCode();
+
+            if (ch === undefined) {
+                return ps.fail();
+            }
+
+            var p = map[ch];
+
+            if (p === undefined) {
+                return ps.fail();
+            }
+
+            return p.parse(ps);
+        });
+    }
+    mpc.switchOver = switchOver;
 
     function circular() {
         return parser(null);

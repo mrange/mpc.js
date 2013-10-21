@@ -18,7 +18,7 @@
 
 module exp {
 
-    // All support operators
+    // All supported operators
     export enum BinaryOperator {
         Unknown     ,
         Add         ,

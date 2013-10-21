@@ -106,6 +106,14 @@ module mpc {
             return this.position >= this.text.length
         }
 
+        currentCharCode() : number {
+            if (this.position >= this.text.length) {
+                return undefined
+            }
+
+            return this.text.charCodeAt(this.position)
+        }
+
         // Advances the parser state as long as the current character and local position
         //  satisfies a criteria
         // Local position starts at 0 and then increases for each call to satisfy
@@ -528,11 +536,11 @@ module mpc {
     // The parsed value is a unicode number character
     export function anyChar() : Parser<number> {
         return parser ((ps : ParserState) => { 
-            if (ps.isEOS()) {
+            var ch = ps.currentCharCode()
+
+            if (ch === undefined) {
                 return ps.fail<number>()
             }
-
-            var ch = ps.text.charCodeAt(ps.position)
 
             ++ps.position
 
@@ -549,11 +557,11 @@ module mpc {
         }
 
         return parser ((ps : ParserState) => { 
-            if (ps.isEOS()) {
+            var ch = ps.currentCharCode()
+
+            if (ch === undefined) {
                 return ps.fail<number>()
             }
-
-            var ch = ps.text.charCodeAt(ps.position)
 
             var indexOf = numbers.indexOf(ch)
 
@@ -574,11 +582,11 @@ module mpc {
         }
 
         return parser ((ps : ParserState) => { 
-            if (ps.isEOS()) {
-                return ps.fail<T>()
-            }
+            var ch = ps.currentCharCode()
 
-            var ch = ps.text.charCodeAt(ps.position)
+            if (ch === undefined) {
+                return ps.fail<number>()
+            }
 
             var indexOf = numbers.indexOf(ch)
 
@@ -758,7 +766,7 @@ module mpc {
     }
 
     // Combines two parser results into a tuple value of both results
-    export function combine<T0, T1>(p0 : Parser<T0>, p1 : Parser<T1>) : Parser<{v0 : T0; v1 : T1}> {
+    export function combine2<T0, T1>(p0 : Parser<T0>, p1 : Parser<T1>) : Parser<{v0 : T0; v1 : T1}> {
         return parser ((ps : ParserState) => { 
             var snapshot = ps.snapshot()
 
@@ -776,6 +784,37 @@ module mpc {
             }
 
             var result = {v0 : p0Result.value, v1 : p1Result.value}
+
+            return ps.succeed(result)
+        })
+    }
+
+    // Combines three parser results into a tuple value of all results
+    export function combine3<T0, T1, T2>(p0 : Parser<T0>, p1 : Parser<T1>, p2 : Parser<T2>) : Parser<{v0 : T0; v1 : T1; v2 : T2}> {
+        return parser ((ps : ParserState) => { 
+            var snapshot = ps.snapshot()
+
+            var p0Result = p0.parse(ps)
+
+            if (!p0Result.success) {
+                return ps.fail<{v0 : T0; v1 : T1; v2 : T2}>()
+            }
+
+            var p1Result = p1.parse(ps)
+
+            if (!p1Result.success) {
+                ps.restore(snapshot)
+                return ps.fail<{v0 : T0; v1 : T1; v2 : T2}>()
+            }
+
+            var p2Result = p2.parse(ps)
+
+            if (!p2Result.success) {
+                ps.restore(snapshot)
+                return ps.fail<{v0 : T0; v1 : T1; v2 : T2}>()
+            }
+
+            var result = {v0 : p0Result.value, v1 : p1Result.value, v2 : p2Result.value}
 
             return ps.succeed(result)
         })
@@ -827,6 +866,39 @@ module mpc {
             }
 
             return ps.fail<T>()
+        })
+    }
+
+    // switch peeks on the first character and uses the associated parser
+    // Note: Useful if the first character can be used as a differentiator
+    export function switchOver<T>(defaultTo: Parser<T>, ... choices : {differentiator : string; parser : Parser<T>}[]) : Parser<T> {
+
+        var map : Parser<T>[] = []
+
+        for (var iter = 0; iter < choices.length; ++iter) {
+            var choice = choices[iter]
+
+            var d = choice.differentiator || ""
+
+            for (var ita = 0; ita < d.length; ++ita) {
+                map[d.charCodeAt(ita)] = choices[iter].parser
+            }
+        }
+        
+        return parser ((ps : ParserState) => { 
+            var ch = ps.currentCharCode()
+
+            if (ch === undefined) {
+                return ps.fail<T>()
+            }
+
+            var p = map[ch]
+
+            if (p === undefined) {
+                return ps.fail<T>()
+            }
+
+            return p.parse(ps)
         })
     }
 
