@@ -58,6 +58,14 @@ module mpc {
         (left : T, op : S, right : T) : T
     }
 
+    // Represents a parse result:
+    //  A flag indicating if parse was successful
+    //  The parsed value (only value if success flag is true)
+    export class ParseResult<T> {
+        success : boolean
+        value   : T
+    }
+
     // ParserState holds (surprisingly) the parser state ie
     //  The text to be parsed
     //  The position in the text
@@ -154,24 +162,14 @@ module mpc {
 
         // Creates a success ParseResult from current state and value
         succeed<T>(value : T) : ParseResult<T> {
-            return {state : this, success : true , value : value}
+            return {success : true , value : value}
         }
 
         // Creates a failure ParseResult from current state
         fail<T>() : ParseResult<T> {
-            return {state : this, success : false , value : undefined}
+            return {success : false , value : undefined}
         }
 
-    }
-
-    // Represents a parse result:
-    //  The current ParserState
-    //  A flag indicating if parse was successful
-    //  The parsed value (only value if success flag is true)
-    export class ParseResult<T> {
-        state   : ParserState
-        success : boolean
-        value   : T
     }
 
     // The Parser monad

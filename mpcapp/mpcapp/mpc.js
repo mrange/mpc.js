@@ -1,5 +1,19 @@
-﻿var mpc;
+﻿// ----------------------------------------------------------------------------------------------
+// Copyright (c) Mårten Rånge.
+// ----------------------------------------------------------------------------------------------
+// This source code is subject to terms and conditions of the Microsoft Public License. A
+// copy of the license can be found in the License.html file at the root of this distribution.
+// If you cannot locate the  Microsoft Public License, please send an email to
+// dlr@microsoft.com. By using this source code in any fashion, you are agreeing to be bound
+//  by the terms of the Microsoft Public License.
+// ----------------------------------------------------------------------------------------------
+// You must not remove this notice, or any other, from this software.
+// ----------------------------------------------------------------------------------------------
+// mpc.js is a monadic parser combinator library
+// See this classic article for an introduction: http://www.cs.nott.ac.uk/~gmh/monparsing.pdf
+var mpc;
 (function (mpc) {
+    // StringBuilder helps building strings more efficiently
     var StringBuilder = (function () {
         function StringBuilder() {
             this.data = [];
@@ -30,6 +44,7 @@
     })();
     mpc.StringBuilder = StringBuilder;
 
+    // Holds a parser snapshot
     var Snapshot = (function () {
         function Snapshot() {
         }
@@ -37,20 +52,38 @@
     })();
     mpc.Snapshot = Snapshot;
 
+    // Represents a parse result:
+    //  A flag indicating if parse was successful
+    //  The parsed value (only value if success flag is true)
+    var ParseResult = (function () {
+        function ParseResult() {
+        }
+        return ParseResult;
+    })();
+    mpc.ParseResult = ParseResult;
+
+    // ParserState holds (surprisingly) the parser state ie
+    //  The text to be parsed
+    //  The position in the text
+    //  The current indention level
+    // Note: For efficiency reasons ParserState is mutable
     var ParserState = (function () {
         function ParserState(s) {
             this.text = s || "";
             this.position = 0;
             this.indent = 0;
         }
+        // Takes a snapshot of the parser state
         ParserState.prototype.snapshot = function () {
             return { position: this.position, indent: this.indent };
         };
 
+        // Increases the current indent
         ParserState.prototype.increaseIndent = function () {
             ++this.indent;
         };
 
+        // Decreases the current indent
         ParserState.prototype.decreaseIndent = function () {
             if (this.indent < 1) {
                 return false;
@@ -61,11 +94,13 @@
             return true;
         };
 
+        // Restores the parser state from a snaphot
         ParserState.prototype.restore = function (snapshot) {
             this.position = snapshot.position;
             this.indent = snapshot.indent;
         };
 
+        // Tests if state is at end of stream (EOS)
         ParserState.prototype.isEOS = function () {
             return this.position >= this.text.length;
         };
@@ -78,6 +113,10 @@
             return this.text.charCodeAt(this.position);
         };
 
+        // Advances the parser state as long as the current character and local position
+        //  satisfies a criteria
+        // Local position starts at 0 and then increases for each call to satisfy
+        // Returns the string that satisfy the critera
         ParserState.prototype.advance = function (satisfy) {
             var begin = this.position;
             var end = this.text.length;
@@ -93,6 +132,10 @@
             return this.text.substring(begin, pos);
         };
 
+        // Advances the parser state as long as the current character and local position
+        //  satisfies a criteria
+        // Local position starts at 0 and then increases for each call to satisfy
+        // Returns how many characters match the criteria (more efficient then advance)
         ParserState.prototype.skipAdvance = function (satisfy) {
             var begin = this.position;
             var end = this.text.length;
@@ -108,28 +151,36 @@
             return pos - begin;
         };
 
+        // Creates a success ParseResult from current state and value
         ParserState.prototype.succeed = function (value) {
-            return { state: this, success: true, value: value };
+            return { success: true, value: value };
         };
 
+        // Creates a failure ParseResult from current state
         ParserState.prototype.fail = function () {
-            return { state: this, success: false, value: undefined };
+            return { success: false, value: undefined };
         };
         return ParserState;
     })();
     mpc.ParserState = ParserState;
 
-    var ParseResult = (function () {
-        function ParseResult() {
-        }
-        return ParseResult;
-    })();
-    mpc.ParseResult = ParseResult;
-
+    // The Parser monad
+    //  A parser takes a parser state and produces a ParseResult
+    //
+    //  If the parse was successful the ParseResult shall contain the value
+    //  and the parser state advanced to the next unparsed character
+    //
+    //  If the parse was unsuccesful the ParseResult shall contain no vlaue
+    //  and the parser state should not be changed updated
+    //  Note: This implies that a parser that mutates the parser state
+    //  needs to restore the parser state on failure. Use snapshot/restore
+    //  Note: If the parser uses other parsers and they all fail no restore
+    //  is needed as Parsers are required to restore their state on failure
     var Parser = (function () {
         function Parser(p) {
             this.parse = p;
         }
+        // Takes a Parser<T> and converts it into a Parser<void>
         Parser.prototype.noResult = function () {
             var _this = this;
             return parser(function (ps) {
@@ -143,6 +194,7 @@
             });
         };
 
+        // Takes a Parser<T> and converts it into a Parser<TResult>
         Parser.prototype.result = function (v) {
             var _this = this;
             return parser(function (ps) {
@@ -156,6 +208,7 @@
             });
         };
 
+        // Takes a Parser<T> and tests if T satisfies a predicate
         Parser.prototype.test = function (predicate) {
             var _this = this;
             return parser(function (ps) {
@@ -176,6 +229,7 @@
             });
         };
 
+        // Tests if a parser has consumed at least i character
         Parser.prototype.consumedAtLeast = function (i) {
             var _this = this;
             return parser(function (ps) {
@@ -196,6 +250,9 @@
             });
         };
 
+        // Combines a parser with a begin parser and an end parser
+        // Typically used to implement subexpressions that is surrounded by parantheses
+        // Example: expressionParser.inBetween(skipString("("), skipString(")"))
         Parser.prototype.inBetween = function (pBegin, pEnd) {
             var _this = this;
             return parser(function (ps) {
@@ -223,6 +280,60 @@
             });
         };
 
+        /* This for some reason struggles as a member function
+        combine<TOther>(pOther : Parser<TOther>) : Parser<{v0 : T; v1 : TOther}> {
+        return parser<{v0 : T; v1 : TOther}> ((ps : ParserState) => {
+        var snapshot = ps.snapshot()
+        
+        var pResult = this.parse(ps)
+        
+        if (!pResult.success) {
+        return ps.fail<{v0 : T; v1 : TOther}>()
+        }
+        
+        var pOtherResult = pOther.parse(ps)
+        
+        if (!pOtherResult.success) {
+        ps.restore(snapshot)
+        return ps.fail<{v0 : T; v1 : TOther}>()
+        }
+        
+        var result = {v0 : pResult.value, v1 : pOtherResult.value}
+        
+        return ps.succeed(result)
+        })
+        }
+        */
+        /* This for some reason struggles as a member function
+        chainLeft<S>(pSeparator : Parser<S>, combiner : (l : T, op : S, r : T) => T) : Parser<T> {
+        return parser ((ps : ParserState) => {
+        var snapshot = ps.snapshot()
+        
+        var pResult = this.parse(ps)
+        if(!pResult.success) {
+        return ps.fail<T>()
+        }
+        
+        var value = pResult.value
+        
+        var pSeparatorResult    : ParseResult<S>
+        var pOtherResult        : ParseResult<T>
+        
+        while((pSeparatorResult = pSeparator.parse(ps)).success && (pOtherResult = this.parse(ps)).success) {
+        snapshot = ps.snapshot()
+        value = combiner(value, pSeparatorResult.value, pOtherResult.value)
+        }
+        
+        ps.restore(snapshot)
+        
+        return ps.succeed(value)
+        })
+        }
+        */
+        // Combines a parser with another parser but keeps the result
+        // of the first parser
+        // This is often used when parsing tokens but the value of the token isn't interesting
+        // Example: combine(identifier.keepLeft(skipString("=")), value)    // The result is a tuple of identifier parser and value parser
         Parser.prototype.keepLeft = function (pOther) {
             var _this = this;
             return parser(function (ps) {
@@ -245,6 +356,10 @@
             });
         };
 
+        // Combines a parser with another parser but keeps the result
+        // of the second parser
+        // This is often used when parsing tokens but the value of the token isn't interesting
+        // Example: combine(identifier, skipString("=").keepRight(value))    // The result is a tuple of identifier parser and value parser
         Parser.prototype.keepRight = function (pOther) {
             var _this = this;
             return parser(function (ps) {
@@ -267,6 +382,8 @@
             });
         };
 
+        // Parse only succeed the parser succeeds and the except parser fails
+        // Example: manyString(anyChar().except(EOL()))
         Parser.prototype.except = function (pExcept) {
             var _this = this;
             return parser(function (ps) {
@@ -289,6 +406,7 @@
             });
         };
 
+        // Parse always succeed but value is null if the parser failed
         Parser.prototype.opt = function () {
             var _this = this;
             return parser(function (ps) {
@@ -302,6 +420,8 @@
             });
         };
 
+        // Transforms the parsed value using a transform function
+        // Example: anyStringOf("0123456789").consumedAtLeast(1).transform((c : string) => parseFloat(c))
         Parser.prototype.transform = function (transform) {
             var _this = this;
             return parser(function (ps) {
@@ -315,6 +435,7 @@
             });
         };
 
+        // log parser is useful for debugging
         Parser.prototype.log = function (name) {
             var _this = this;
             return parser(function (ps) {
@@ -335,17 +456,20 @@
     })();
     mpc.Parser = Parser;
 
+    // Constructs a parser from a parse function
     function parser(p) {
         return new Parser(p);
     }
     mpc.parser = parser;
 
+    // Executes a parser over an input string
     function parse(p, s) {
         var ps = new ParserState(s);
         return p.parse(ps);
     }
     mpc.parse = parse;
 
+    // Returns a parser that always succeed with value
     function success(value) {
         return parser(function (ps) {
             return ps.succeed(value);
@@ -353,6 +477,7 @@
     }
     mpc.success = success;
 
+    // Returns a parser that always fails
     function fail() {
         return parser(function (ps) {
             return ps.fail();
@@ -360,6 +485,7 @@
     }
     mpc.fail = fail;
 
+    // Parser increases the current indent
     function indent() {
         return parser(function (ps) {
             ps.increaseIndent();
@@ -368,6 +494,8 @@
     }
     mpc.indent = indent;
 
+    // Parser decreases the current indent
+    // Fails if indent couldn't be decreased
     function dedent() {
         return parser(function (ps) {
             if (!ps.decreaseIndent()) {
@@ -378,6 +506,8 @@
     }
     mpc.dedent = dedent;
 
+    // Parser parses the expected number of indent
+    // Fails if not enough indent characters could be consumed
     function indention() {
         return parser(function (ps) {
             var snapshot = ps.snapshot();
@@ -401,11 +531,14 @@
     }
     mpc.indention = indention;
 
+    // Parses any number of indention characters
     function anyIndention() {
         return skipSatisfyMany(satisyTab);
     }
     mpc.anyIndention = anyIndention;
 
+    // Parses any character
+    // The parsed value is a unicode number character
     function anyChar() {
         return parser(function (ps) {
             var ch = ps.currentCharCode();
@@ -421,6 +554,7 @@
     }
     mpc.anyChar = anyChar;
 
+    // Parses any character that is a member of str and returns the index of the match
     function anyCharOf(str) {
         var numbers = [];
 
@@ -478,6 +612,7 @@
     }
     mpc.anyCharOf2 = anyCharOf2;
 
+    // Parses a string whose characters are a member of str
     function anyStringOf(str) {
         var numbers = [];
 
@@ -498,6 +633,7 @@
     }
     mpc.anyStringOf = anyStringOf;
 
+    // Parses EOS (end of stream)
     function EOS() {
         return parser(function (ps) {
             if (!ps.isEOS()) {
@@ -509,6 +645,7 @@
     }
     mpc.EOS = EOS;
 
+    // Parses EOL (end of line)
     function EOL() {
         return parser(function (ps) {
             if (ps.isEOS()) {
@@ -538,6 +675,7 @@
     }
     mpc.EOL = EOL;
 
+    // Parses a character that satisfy the predicate
     function satisfy(satisfy) {
         return parser(function (ps) {
             if (ps.isEOS()) {
@@ -557,6 +695,7 @@
     }
     mpc.satisfy = satisfy;
 
+    // Parses a string that satisfy the predicate
     function satisfyMany(satisfy) {
         return parser(function (ps) {
             return ps.succeed(ps.advance(satisfy));
@@ -564,6 +703,7 @@
     }
     mpc.satisfyMany = satisfyMany;
 
+    // Skips characters that match the predicate
     function skipSatisfyMany(satisfy) {
         return parser(function (ps) {
             return ps.succeed(ps.skipAdvance(satisfy));
@@ -571,6 +711,7 @@
     }
     mpc.skipSatisfyMany = skipSatisfyMany;
 
+    // Satisfy function for whitespace
     function satisyWhitespace(ch, pos) {
         switch (ch) {
             case 0x09:
@@ -584,11 +725,14 @@
     }
     mpc.satisyWhitespace = satisyWhitespace;
 
+    // Satisfy function for tab
     function satisyTab(ch, pos) {
         return ch === 0x09;
     }
     mpc.satisyTab = satisyTab;
 
+    // Skips a string that matches str
+    //  Typically used to parse tokens in file
     function skipString(str) {
         return parser(function (ps) {
             var snapshot = ps.snapshot();
@@ -609,6 +753,7 @@
     }
     mpc.skipString = skipString;
 
+    // Applies the parser until it fails and the value is an array of all successfully parsed values
     function many(p) {
         return parser(function (ps) {
             var result = [];
@@ -624,6 +769,7 @@
     }
     mpc.many = many;
 
+    // Applies the character number parser and combines the characters into a string
     function manyString(p) {
         return parser(function (ps) {
             var result = "";
@@ -641,6 +787,7 @@
     }
     mpc.manyString = manyString;
 
+    // Combines two parser results into a tuple value of both results
     function combine2(p0, p1) {
         return parser(function (ps) {
             var snapshot = ps.snapshot();
@@ -665,6 +812,7 @@
     }
     mpc.combine2 = combine2;
 
+    // Combines three parser results into a tuple value of all results
     function combine3(p0, p1, p2) {
         return parser(function (ps) {
             var snapshot = ps.snapshot();
@@ -696,6 +844,10 @@
     }
     mpc.combine3 = combine3;
 
+    // chainLeft is typically used to implement left associative operators
+    //  The p parser parser an expression
+    //  The pSeparator parser parses the operator
+    //  The combiner combines the result expressions into a new expression
     function chainLeft(p, pSeparator, combiner) {
         return parser(function (ps) {
             var pResult = p.parse(ps);
@@ -722,6 +874,7 @@
     }
     mpc.chainLeft = chainLeft;
 
+    // choice applies each input parser in order and picks the first that matches
     function choice() {
         var choices = [];
         for (var _i = 0; _i < (arguments.length - 0); _i++) {
@@ -743,6 +896,8 @@
     }
     mpc.choice = choice;
 
+    // switch peeks on the first character and uses the associated parser
+    // Note: Useful if the first character can be used as a differentiator
     function switchOver(defaultTo) {
         var choices = [];
         for (var _i = 0; _i < (arguments.length - 1); _i++) {
@@ -778,8 +933,10 @@
     }
     mpc.switchOver = switchOver;
 
+    // Special parser used to be break circular parsers (very common)
     function circular() {
         return parser(null);
     }
     mpc.circular = circular;
 })(mpc || (mpc = {}));
+//# sourceMappingURL=mpc.js.map
